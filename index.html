@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>動画アップロードApp</title>
+    <style>
+        /* スマホ向けのかんたんなデザイン */
+        body { font-family: sans-serif; padding: 20px; background-color: #f0f0f0; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; }
+        
+        /* ボタンのデザイン */
+        .btn {
+            display: block; width: 100%; padding: 15px; margin: 10px 0;
+            border: none; border-radius: 5px; font-size: 16px; cursor: pointer;
+        }
+        .btn-select { background-color: #007bff; color: white; }
+        .btn-upload { background-color: #28a745; color: white; }
+        .btn:disabled { background-color: #ccc; }
+        
+        /* 隠し要素 */
+        #fileInput { display: none; }
+        #status { margin-top: 15px; font-weight: bold; color: #555; }
+        #preview { max-width: 100%; margin-top: 10px; display: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>現場報告アプリ</h2>
+    
+    <button onclick="document.getElementById('fileInput').click()" class="btn btn-select">
+        📷 カメラを起動 / 動画選択
+    </button>
+    
+    <input type="file" id="fileInput" accept="video/*,image/*" capture="environment">
+
+    <video id="preview" controls></video>
+    <p id="fileInfo">ファイルが未選択です</p>
+
+    <button id="uploadBtn" class="btn btn-upload" onclick="startUpload()" disabled>
+        🚀 位置情報を取得して送信
+    </button>
+
+    <p id="status"></p>
+</div>
+
+<script>
+    // 【重要】ここに作成したAPI GatewayのURLを貼り付けてください
+    // 末尾の /get-upload-url などは削除し、ドメイン部分だけにしてください
+    const API_BASE_URL = "https://o90n5zhx50.execute-api.ap-northeast-1.amazonaws.com";
+
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const statusText = document.getElementById('status');
+    const preview = document.getElementById('preview');
+    let selectedFile = null;
+
+    // 1. ファイルが選択された時の処理
+    fileInput.addEventListener('change', (event) => {
+        if (event.target.files.length > 0) {
+            selectedFile = event.target.files[0];
+            document.getElementById('fileInfo').innerText = `選択中: ${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`;
+            
+            // プレビュー表示
+            preview.style.display = 'block';
+            preview.src = URL.createObjectURL(selectedFile);
+            
+            uploadBtn.disabled = false; // 送信ボタンを有効化
+            statusText.innerText = "送信準備OK";
+        }
+    });
+
+    // 2. 送信ボタンが押された時の処理（メイン処理）
+    async function startUpload() {
+        uploadBtn.disabled = true;
+        statusText.innerText = "📍 位置情報を取得中...";
+
+        // 位置情報の取得
+        if (!navigator.geolocation) {
+            alert("このブラウザは位置情報に対応していません");
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            statusText.innerText = `📍 取得完了: ${lat.toFixed(4)}, ${lon.toFixed(4)}\n🔄 アップロード準備中...`;
+            
+            try {
+                // A. 署名付きURLをLambdaからもらう
+                const urlRes = await fetch(`${API_BASE_URL}/get-upload-url`);
+                if (!urlRes.ok) throw new Error("URL発行エラー");
+                const urlData = await urlRes.json();
+                
+                const uploadUrl = urlData.uploadUrl;
+                const savedFileName = urlData.fileName;
+
+                // B. S3へ直接アップロード (PUT)
+                statusText.innerText = "📤 動画をS3へアップロード中...";
+                
+                const uploadRes = await fetch(uploadUrl, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "video/mp4" // Lambdaの設定と合わせる必要があります
+                    },
+                    body: selectedFile
+                });
+
+                if (!uploadRes.ok) throw new Error("S3アップロードエラー");
+
+                // C. 完了通知とデータをDynamoDBへ (POST)
+                statusText.innerText = "💾 データを保存中...";
+                
+                const saveRes = await fetch(`${API_BASE_URL}/save-data`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        userId: "guest-user", // ログイン機能がないので仮のID
+                        lat: lat,
+                        lon: lon,
+                        fileName: savedFileName,
+                        bucketName: "your-bucket-name" // ※本来はサーバー側で管理すべきですが簡易実装のため
+                    })
+                });
+
+                if (!saveRes.ok) throw new Error("データ保存エラー");
+
+                statusText.innerText = "✅ すべて完了しました！";
+                alert("アップロード成功！");
+
+            } catch (error) {
+                console.error(error);
+                statusText.innerText = "❌ エラーが発生しました: " + error.message;
+                uploadBtn.disabled = false;
+            }
+
+        }, (error) => {
+            statusText.innerText = "❌ 位置情報の取得に失敗しました";
+            console.error(error);
+            uploadBtn.disabled = false;
+        });
+    }
+</script>
+
+</body>
+</html>
