@@ -35,6 +35,28 @@
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const currentLat = position.coords.latitude;
+                const currentLon = position.coords.longitude;
+                
+                // 現在地へアニメーション移動 (ズームレベル14 = 結構アップ)
+                map.flyTo([currentLat, currentLon], 14);
+
+                // お好みで：現在地に「青い丸」を表示する場合
+                /*
+                L.circleMarker([currentLat, currentLon], {
+                    color: 'blue', radius: 8, fillOpacity: 0.5
+                }).addTo(map).bindPopup("あなたの現在地");
+                */
+            },
+            (error) => {
+                console.log("現在地の取得に失敗、または拒否されました");
+            }
+        );
+    }
+    
     // 3. データを取得してピンを立てる関数
     async function loadData() {
         try {
