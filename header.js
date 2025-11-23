@@ -55,7 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <ul class="nav-tabs">
                 <li class="nav-item">
                     <a href="index.html" class="nav-link ${isUploadPage ? 'active' : ''}">
-                        📷 現場報告
+                        📷 ライフログ記録
                     </a>
                 </li>
                 <li class="nav-item">
