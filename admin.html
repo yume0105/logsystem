@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理画面 - マップビュー</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        /* 地図を画面いっぱいに表示 */
+        #map { height: 100vh; width: 100%; }
+        
+        /* ポップアップ内の動画サイズ */
+        .popup-video { width: 200px; height: auto; border-radius: 5px; }
+        .popup-info { font-size: 14px; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div id="global-header"></div>
+    <script src="header.js"></script>
+    <div id="map"></div>
+
+<script>
+    // 【重要】Renderの設定と同じように、ここを環境変数対応にするか、URLを直接貼ってください
+    const API_BASE_URL = "REPLACE_ME_API_URL";
+
+    // 1. 地図の初期化 (初期位置は東京あたり)
+    const map = L.map('map').setView([35.6895, 139.6917], 10);
+
+    // 2. 地図タイルの読み込み (OpenStreetMapを使用)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // 3. データを取得してピンを立てる関数
+    async function loadData() {
+        try {
+            const res = await fetch(`${API_BASE_URL}/get-all-data`);
+            if (!res.ok) throw new Error("データ取得失敗");
+            
+            const dataList = await res.json();
+            
+            // データが0件の場合
+            if (dataList.length === 0) {
+                alert("データがまだありません");
+                return;
+            }
+
+            // 取得したデータをループしてピン(Marker)を立てる
+            dataList.forEach(item => {
+                // itemの中身: { lat, lon, videoUrl, timestamp, ... }
+                if (item.lat && item.lon && item.videoUrl) {
+                    
+                    // 日時のフォーマット
+                    const date = new Date(item.timestamp).toLocaleString();
+
+                    // ピンをクリックした時に出る吹き出し(Popup)の中身を作る
+                    const popupContent = `
+                        <div class="popup-info">
+                            <b>日時:</b> ${date}<br>
+                            <b>ユーザー:</b> ${item.userId}
+                        </div>
+                        <video src="${item.videoUrl}" controls class="popup-video"></video>
+                        <br>
+                        <a href="${item.videoUrl}" target="_blank">動画を別窓で開く</a>
+                    `;
+
+                    // 地図にピンを追加
+                    L.marker([item.lat, item.lon])
+                        .addTo(map)
+                        .bindPopup(popupContent);
+                }
+            });
+
+        } catch (error) {
+            console.error(error);
+            alert("データの読み込みに失敗しました");
+        }
+    }
+
+    // ページが開いたら実行
+    loadData();
+
+</script>
+
+</body>
+</html>
